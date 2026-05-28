@@ -71,19 +71,6 @@ let package = Package(
             cxxSettings: [
                 .define("SILENT"),
                 .define("RARDLL"),
-                .unsafeFlags([
-                    "-Wno-return-type",
-                    "-Wno-logical-op-parentheses",
-                    "-Wno-conversion",
-                    "-Wno-parentheses",
-                    "-Wno-unused-function",
-                    "-Wno-unused-variable",
-                    "-Wno-switch",
-                    "-Wno-unused-command-line-argument",
-                    "-Wno-strict-prototypes",
-                    "-Wno-conditional-uninitialized",
-                    "-Xanalyzer", "-analyzer-disable-all-checks",
-                ]),
             ],
             linkerSettings: [
                 .linkedLibrary("c++"),
@@ -111,16 +98,6 @@ let package = Package(
                 .headerSearchPath("../../Libraries/unrar"),
                 .headerSearchPath("."),
                 .headerSearchPath("include"),
-                .unsafeFlags([
-                    "-Wno-return-type",
-                    "-Wno-logical-op-parentheses",
-                    "-Wno-conversion",
-                    "-Wno-parentheses",
-                    "-Wno-unused-function",
-                    "-Wno-unused-variable",
-                    "-Wno-switch",
-                    "-Wno-conditional-uninitialized",
-                ]),
             ],
             linkerSettings: [
                 .linkedLibrary("z"),
