@@ -1035,14 +1035,14 @@ NS_DESIGNATED_INITIALIZER
         int RHCode = RARReadHeaderEx(self.rarFile, self.header);
         int PFCode = RARProcessFile(self.rarFile, RAR_SKIP, NULL, NULL);
 
-        URKLogDebug("Checking header");
-        if ([self headerContainsErrors:&error]) {
-            if (error.code == ERAR_MISSING_PASSWORD) {
-                URKLogDebug("Password is missing");
-                return YES;
-            }
+        URKLogDebug("Checking header flags directly for Password protection");
 
-            URKLogError("Errors in header while checking for password: %{public}@", error);
+        // 直接检查头部标志位，不依赖 self.password 的状态
+        // 避免当 self.password 已设置时 headerContainsErrors: 返回 NO 的问题
+        BOOL headerFlagIndicatesPassword = (self.header->Flags & 0x04) != 0;
+        if (headerFlagIndicatesPassword) {
+            URKLogDebug("Header flag indicates Password protection");
+            return YES;
         }
 
         if (RHCode == ERAR_MISSING_PASSWORD || PFCode == ERAR_MISSING_PASSWORD) {
