@@ -91,6 +91,63 @@ typedef NS_ENUM(NSUInteger, URKHostOS) {
 };
 
 /**
+ *  Defines the hash types used for file integrity verification
+ */
+typedef NS_ENUM(NSUInteger, URKHashType) {
+    
+    /**
+     *  No hash
+     */
+    URKHashTypeNone   = RAR_HASH_NONE,
+    
+    /**
+     *  CRC32 checksum
+     */
+    URKHashTypeCRC32  = RAR_HASH_CRC32,
+    
+    /**
+     *  BLAKE2sp hash (used in RAR5)
+     */
+    URKHashTypeBlake2 = RAR_HASH_BLAKE2,
+};
+
+/**
+ *  Defines the redirect/symlink types for file entries
+ */
+typedef NS_ENUM(NSUInteger, URKRedirectType) {
+    
+    /**
+     *  Not a redirect
+     */
+    URKRedirectTypeNone          = 0,
+    
+    /**
+     *  Unix symbolic link
+     */
+    URKRedirectTypeUnixSymlink   = 1,
+    
+    /**
+     *  Windows symbolic link
+     */
+    URKRedirectTypeWinSymlink    = 2,
+    
+    /**
+     *  Windows junction
+     */
+    URKRedirectTypeWinJunction   = 3,
+    
+    /**
+     *  Hard link
+     */
+    URKRedirectTypeHardLink      = 4,
+    
+    /**
+     *  File copy (duplicate)
+     */
+    URKRedirectTypeFileCopy      = 5,
+};
+
+/**
  *  A wrapper around a RAR archive's file header, defining the various fields
  *  it contains
  */
@@ -107,14 +164,45 @@ typedef NS_ENUM(NSUInteger, URKHostOS) {
 @property (readonly, strong) NSString *filename;
 
 /**
- *  The timestamp of the file
+ *  The last-modified timestamp of the file (from DOS date field).
+ *  For higher precision, use lastModifiedTime
  */
 @property (readonly, strong) NSDate *timestamp;
+
+/**
+ *  High-precision last-modified time (from MtimeLow/MtimeHigh fields, RAR5).
+ *  Falls back to timestamp (DOS date) if not available
+ */
+@property (readonly, strong, nullable) NSDate *lastModifiedTime;
+
+/**
+ *  High-precision creation time (from CtimeLow/CtimeHigh fields, RAR5).
+ *  May be nil if not stored in the archive
+ */
+@property (readonly, strong, nullable) NSDate *creationTime;
+
+/**
+ *  High-precision last-access time (from AtimeLow/AtimeHigh fields, RAR5).
+ *  May be nil if not stored in the archive
+ */
+@property (readonly, strong, nullable) NSDate *lastAccessTime;
 
 /**
  *  The CRC checksum of the file
  */
 @property (readonly, assign) NSUInteger CRC;
+
+/**
+ *  The hash type used for integrity verification (CRC32 or BLAKE2sp)
+ */
+@property (readonly, assign) URKHashType hashType;
+
+/**
+ *  The raw hash bytes (32 bytes). Interpretation depends on hashType.
+ *  For CRC32, only the first 4 bytes are meaningful.
+ *  For BLAKE2sp, all 32 bytes are used.
+ */
+@property (readonly, strong, nullable) NSData *fileHash;
 
 /**
  *  Size of the uncompressed file
@@ -127,7 +215,12 @@ typedef NS_ENUM(NSUInteger, URKHostOS) {
 @property (readonly, assign) long long compressedSize;
 
 /**
- *  YES if the file will be continued of the next volume
+ *  The dictionary size used during compression (in bytes)
+ */
+@property (readonly, assign) NSUInteger dictionarySize;
+
+/**
+ *  YES if the file is encrypted with a password
  */
 @property (readonly) BOOL isEncryptedWithPassword;
 
@@ -135,6 +228,36 @@ typedef NS_ENUM(NSUInteger, URKHostOS) {
  *  YES if the file is a directory
  */
 @property (readonly) BOOL isDirectory;
+
+/**
+ *  YES if this file entry is continued from a previous volume
+ */
+@property (readonly) BOOL isSplitBefore;
+
+/**
+ *  YES if this file entry continues on the next volume
+ */
+@property (readonly) BOOL isSplitAfter;
+
+/**
+ *  YES if this file is part of a solid archive block
+ */
+@property (readonly) BOOL isSolid;
+
+/**
+ *  The redirect/symlink type of this entry (URKRedirectTypeNone if not a redirect)
+ */
+@property (readonly, assign) URKRedirectType redirectType;
+
+/**
+ *  The target path for redirect/symlink entries. Nil if not a redirect
+ */
+@property (readonly, strong, nullable) NSString *redirectName;
+
+/**
+ *  YES if this redirect entry points to a directory
+ */
+@property (readonly) BOOL redirectIsDirectory;
 
 /**
  *  The type of compression
@@ -153,6 +276,6 @@ typedef NS_ENUM(NSUInteger, URKHostOS) {
  *
  *  @return an instance of URKFileInfo
  */
-+ (instancetype) fileInfo:(struct RARHeaderDataEx *)fileHeader;
++ (instancetype) fileInfo:(struct RARHeaderDataEx * _Nonnull)fileHeader;
 
 @end

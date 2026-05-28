@@ -17,6 +17,7 @@ RarHppIgnore
 
 
 NSString *URKErrorDomain = @"URKErrorDomain";
+NSString *const URKProgressInfoKeyFileInfoExtracting = @"URKProgressInfoKeyFileInfoExtracting";
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wundef"
@@ -33,6 +34,9 @@ typedef enum : NSUInteger {
     URKReadHeaderLoopActionContinueReading,
 } URKReadHeaderLoopAction;
 
+
+// Maximum comment buffer size (bytes). RAR supports up to 65536 bytes of comment.
+static const NSUInteger kURKArchiveCommentBufferSize = 65536;
 
 @interface URKArchive ()
 
@@ -56,6 +60,8 @@ NS_DESIGNATED_INITIALIZER
 
 @property (copy) NSString *lastArchivePath;
 @property (copy) NSString *lastFilepath;
+
+- (BOOL)_readArchiveFlag:(unsigned int)flagBit;
 
 @end
 
@@ -283,7 +289,6 @@ NS_DESIGNATED_INITIALIZER
     
     return [NSNumber numberWithUnsignedLongLong:attributes.fileSize];
 }
-
 - (BOOL)hasMultipleVolumes
 {
     URKCreateActivity("Check If Multi-Volume Archive");
@@ -299,6 +304,126 @@ NS_DESIGNATED_INITIALIZER
     return volumeURLs.count > 1;
 }
 
+- (nullable NSString *)archiveComment
+{
+    URKCreateActivity("Read Archive Comment");
+
+    NSString *filePath = self.filename;
+    if (!filePath) {
+        URKLogError("Can't read archive comment: file path is nil");
+        return nil;
+    }
+
+    // Allocate a comment buffer and open the archive in list mode to read the comment
+    char *commentBuffer = (char *)malloc(kURKArchiveCommentBufferSize);
+    if (!commentBuffer) {
+        URKLogError("malloc failed: out of memory allocating comment buffer");
+        return nil;
+    }
+
+    struct RAROpenArchiveDataEx openData;
+    bzero(&openData, sizeof(openData));
+
+    const char *utf8Path = filePath.UTF8String;
+    if (!utf8Path) {
+        URKLogError("Failed to get UTF-8 path for archive comment read");
+        free(commentBuffer);
+        return nil;
+    }
+
+    openData.ArcName   = (char *)utf8Path;
+    openData.OpenMode  = RAR_OM_LIST;
+    openData.CmtBuf    = commentBuffer;
+    openData.CmtBufSize = (unsigned int)kURKArchiveCommentBufferSize;
+
+    HANDLE handle = RAROpenArchiveEx(&openData);
+
+    NSString *comment = nil;
+
+    if (handle && openData.OpenResult == ERAR_SUCCESS) {
+        // CmtState: 0 = no comment, 1 = comment read successfully, 2 = buffer too small
+        if (openData.CmtState == 1 && openData.CmtSize > 0) {
+            URKLogDebug("Archive comment read (%u bytes)", openData.CmtSize);
+            comment = [NSString stringWithUTF8String:commentBuffer];
+            if (!comment) {
+                // Fallback: try Latin-1 encoding
+                comment = [[NSString alloc] initWithBytes:commentBuffer
+                                                   length:openData.CmtSize
+                                                 encoding:NSISOLatin1StringEncoding];
+            }
+        } else if (openData.CmtState == 2) {
+            URKLogDebug("Archive comment buffer too small (%u bytes needed)", openData.CmtSize);
+        } else {
+            URKLogDebug("Archive has no comment (CmtState=%u)", openData.CmtState);
+        }
+        RARCloseArchive(handle);
+    } else {
+        URKLogError("Failed to open archive for comment reading (OpenResult=%u)", openData.OpenResult);
+    }
+
+    free(commentBuffer);
+    return comment;
+}
+
+- (BOOL)isSolidArchive
+{
+    URKCreateActivity("Check If Solid Archive");
+    return [self _readArchiveFlag:ROADF_SOLID];
+}
+
+- (BOOL)hasEncryptedHeaders
+{
+    URKCreateActivity("Check If Headers Encrypted");
+    return [self _readArchiveFlag:ROADF_ENCHEADERS];
+}
+
+- (BOOL)hasRecoveryRecord
+{
+    URKCreateActivity("Check If Has Recovery Record");
+    return [self _readArchiveFlag:ROADF_RECOVERY];
+}
+
+- (BOOL)isLocked
+{
+    URKCreateActivity("Check If Archive Is Locked");
+    return [self _readArchiveFlag:ROADF_LOCK];
+}
+
+/**
+ *  Helper: open the archive in list mode and check a specific flag bit from RAROpenArchiveDataEx.Flags
+ */
+- (BOOL)_readArchiveFlag:(unsigned int)flagBit
+{
+    NSString *filePath = self.filename;
+    if (!filePath) {
+        URKLogError("Can't read archive flags: file path is nil");
+        return NO;
+    }
+
+    struct RAROpenArchiveDataEx openData;
+    bzero(&openData, sizeof(openData));
+
+    const char *utf8Path = filePath.UTF8String;
+    if (!utf8Path) {
+        URKLogError("Failed to get UTF-8 path for archive flag read");
+        return NO;
+    }
+
+    openData.ArcName  = (char *)utf8Path;
+    openData.OpenMode = RAR_OM_LIST;
+
+    HANDLE handle = RAROpenArchiveEx(&openData);
+    BOOL result = NO;
+
+    if (handle && openData.OpenResult == ERAR_SUCCESS) {
+        result = (openData.Flags & flagBit) != 0;
+        RARCloseArchive(handle);
+    } else {
+        URKLogError("Failed to open archive for flag read (OpenResult=%u)", openData.OpenResult);
+    }
+
+    return result;
+}
 
 
 #pragma mark - Zip file detection
@@ -858,6 +983,12 @@ NS_DESIGNATED_INITIALIZER
             }
 
             UInt8 *buffer = (UInt8 *)malloc((size_t)info.uncompressedSize * sizeof(UInt8));
+            if (!buffer) {
+                NSString *errorName = nil;
+                [welf assignError:innerError code:URKErrorCodeNoMemory errorName:&errorName];
+                URKLogError("malloc failed: out of memory allocating %lld bytes for %{public}@", info.uncompressedSize, info.filename);
+                return;
+            }
             UInt8 *callBackBuffer = buffer;
 
             RARSetCallback(welf.rarFile, CallbackProc, (long) &callBackBuffer);
@@ -869,6 +1000,7 @@ NS_DESIGNATED_INITIALIZER
                 NSString *errorName = nil;
                 [welf assignError:innerError code:(NSInteger)PFCode errorName:&errorName];
                 URKLogError("Error processing file: %{public}@ (%d)", errorName, PFCode);
+                free(buffer);
                 return;
             }
 
@@ -1026,22 +1158,34 @@ NS_DESIGNATED_INITIALIZER
                      withPassword:nil
                             error:&error])
         {
+            // 对于头部加密（Header Encrypted）归档，打开时 OpenResult 为 ERAR_MISSING_PASSWORD
+            // 此时应返回 YES 而非 NO
+            if (error && (error.code == ERAR_MISSING_PASSWORD || error.code == ERAR_BAD_PASSWORD)) {
+                URKLogDebug("Archive open failed due to missing/bad password (header encrypted): %{public}@", error);
+                return YES;
+            }
             URKLogError("Failed to open archive while checking for password: %{public}@", error);
             return NO;
         }
 
+        // 检查归档级别的头部加密标志（ROADF_ENCHEADERS），适用于 Header Encrypted 归档
+        if (self.flags->Flags & ROADF_ENCHEADERS) {
+            URKLogDebug("Archive flags indicate header encryption (ROADF_ENCHEADERS)");
+            return YES;
+        }
+
         URKLogDebug("Reading header and starting processing...");
-        
+
         int RHCode = RARReadHeaderEx(self.rarFile, self.header);
         int PFCode = RARProcessFile(self.rarFile, RAR_SKIP, NULL, NULL);
 
         URKLogDebug("Checking header flags directly for Password protection");
 
-        // 直接检查头部标志位，不依赖 self.password 的状态
+        // 直接检查文件头部标志位（RHDF_ENCRYPTED），不依赖 self.password 的状态
         // 避免当 self.password 已设置时 headerContainsErrors: 返回 NO 的问题
-        BOOL headerFlagIndicatesPassword = (self.header->Flags & 0x04) != 0;
+        BOOL headerFlagIndicatesPassword = (self.header->Flags & RHDF_ENCRYPTED) != 0;
         if (headerFlagIndicatesPassword) {
-            URKLogDebug("Header flag indicates Password protection");
+            URKLogDebug("Header flag (RHDF_ENCRYPTED) indicates Password protection");
             return YES;
         }
 
@@ -1075,12 +1219,14 @@ NS_DESIGNATED_INITIALIZER
         int PFCode = RARProcessFile(welf.rarFile, RAR_TEST, NULL, NULL);
 
         if ([welf headerContainsErrors:innerError]) {
-            if (error.code == ERAR_MISSING_PASSWORD) {
+            // 修复：应读取 *innerError 而非外部 error 变量
+            // 外部 error 在 block 执行期间仍为 nil，导致条件判断永远失败
+            if (innerError && (*innerError).code == ERAR_MISSING_PASSWORD) {
                 URKLogDebug("Password invalidated by header");
                 passwordIsGood = NO;
             }
             else {
-                URKLogError("Errors in header while validating password: %{public}@", error);
+                URKLogError("Errors in header while validating password: %{public}@", innerError ? *innerError : nil);
             }
 
             return;
@@ -1350,12 +1496,29 @@ int CALLBACK AllowCancellationCallbackProc(UINT msg, long UserData, long P1, lon
 
     self.header = new RARHeaderDataEx;
     bzero(self.header, sizeof(RARHeaderDataEx));
-	self.flags = new RAROpenArchiveDataEx;
+    self.flags = new RAROpenArchiveDataEx;
     bzero(self.flags, sizeof(RAROpenArchiveDataEx));
 
     URKLogDebug("Setting archive name...");
     
-    self.flags->ArcName = strdup(rarFile.UTF8String);
+    const char *utf8Path = rarFile.UTF8String;
+    if (!utf8Path) {
+        URKLogError("Failed to get UTF-8 path for archive");
+        delete self.header; self.header = 0;
+        delete self.flags; self.flags = 0;
+        NSString *errorName = nil;
+        [self assignError:error code:URKErrorCodeStringConversion errorName:&errorName];
+        return NO;
+    }
+    self.flags->ArcName = strdup(utf8Path);
+    if (!self.flags->ArcName) {
+        URKLogError("strdup failed: out of memory");
+        delete self.header; self.header = 0;
+        delete self.flags; self.flags = 0;
+        NSString *errorName = nil;
+        [self assignError:error code:URKErrorCodeNoMemory errorName:&errorName];
+        return NO;
+    }
     self.flags->OpenMode = (uint)mode;
     self.flags->OpFlags = self.ignoreCRCMismatches ? ROADOF_KEEPBROKEN : 0;
 
@@ -1366,6 +1529,10 @@ int CALLBACK AllowCancellationCallbackProc(UINT msg, long UserData, long P1, lon
         NSString *errorName = nil;
         [self assignError:error code:(NSInteger)self.flags->OpenResult errorName:&errorName];
         URKLogError("Error opening archive: %{public}@ (%u)", errorName, self.flags->OpenResult);
+        // 清理已分配的资源，避免内存泄漏
+        free(self.flags->ArcName); self.flags->ArcName = NULL;
+        delete self.header; self.header = 0;
+        delete self.flags; self.flags = 0;
         return NO;
     }
 
@@ -1383,13 +1550,18 @@ int CALLBACK AllowCancellationCallbackProc(UINT msg, long UserData, long P1, lon
             NSString *errorName = nil;
             [self assignError:error code:URKErrorCodeStringConversion errorName:&errorName];
             URKLogError("Error converting password to UTF-8 (buffer too short?)");
+            // 清理已打开的归档和分配的资源
+            RARCloseArchive(self.rarFile); self.rarFile = 0;
+            free(self.flags->ArcName); self.flags->ArcName = NULL;
+            delete self.header; self.header = 0;
+            delete self.flags; self.flags = 0;
             return NO;
         }
         
         RARSetPassword(self.rarFile, cPassword);
     }
 
-	return YES;
+    return YES;
 }
 
 - (BOOL)closeFile

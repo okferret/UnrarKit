@@ -116,11 +116,10 @@ typedef NSString *const URKProgressInfoKey;
 /**
  *  Defines the keys passed in `-[NSProgress userInfo]` for certain methods
  */
-static URKProgressInfoKey _Nonnull
-    /**
-     *  For `extractFilesTo:overwrite:error:`, this key contains an instance of URKFileInfo with the file currently being extracted
-     */
-    URKProgressInfoKeyFileInfoExtracting = @"URKProgressInfoKeyFileInfoExtracting";
+/**
+ *  For `extractFilesTo:overwrite:error:`, this key contains an instance of URKFileInfo with the file currently being extracted
+ */
+FOUNDATION_EXPORT URKProgressInfoKey _Nonnull URKProgressInfoKeyFileInfoExtracting;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -142,12 +141,12 @@ extern NSString *URKErrorDomain;
 /**
  *  The URL of the archive
  */
-@property(nullable, weak, atomic, readonly) NSURL *fileURL;
+@property(nullable, strong, atomic, readonly) NSURL *fileURL;
 
 /**
  *  The filename of the archive
  */
-@property(nullable, weak, atomic, readonly) NSString *filename;
+@property(nullable, strong, atomic, readonly) NSString *filename;
 
 /**
  *  The password of the archive
@@ -168,6 +167,32 @@ extern NSString *URKErrorDomain;
  *  True if the file is one volume of a multi-part archive
  */
 @property(atomic, readonly) BOOL hasMultipleVolumes;
+
+/**
+ *  The archive comment string, or nil if the archive has no comment or the comment
+ *  could not be read. Comments are supported in RAR 1.5–4.x archives.
+ */
+@property(nullable, strong, atomic, readonly) NSString *archiveComment;
+
+/**
+ *  YES if the archive is a solid archive (all files compressed together)
+ */
+@property(atomic, readonly) BOOL isSolidArchive;
+
+/**
+ *  YES if the archive headers are encrypted (header-encrypted archive)
+ */
+@property(atomic, readonly) BOOL hasEncryptedHeaders;
+
+/**
+ *  YES if the archive has a recovery record
+ */
+@property(atomic, readonly) BOOL hasRecoveryRecord;
+
+/**
+ *  YES if the archive is locked (modification is prevented)
+ */
+@property(atomic, readonly) BOOL isLocked;
 
 /**
  *  Can be used for progress reporting, but it's not necessary. You can also use
@@ -211,7 +236,7 @@ extern NSString *URKErrorDomain;
  *  **DEPRECATED:** Creates and returns an archive at the given path, with a given password
  *
  *  @param filePath A path to the archive file
- *  @param password The passowrd of the given archive
+ *  @param password The password of the given archive
  */
 + (nullable instancetype)rarArchiveAtPath:(NSString *)filePath password:(NSString *)password __deprecated_msg("Use -initWithPath:password:error: instead");
 
@@ -219,10 +244,9 @@ extern NSString *URKErrorDomain;
  *  **DEPRECATED:** Creates and returns an archive at the given URL, with a given password
  *
  *  @param fileURL  The URL of the archive file
- *  @param password The passowrd of the given archive
+ *  @param password The password of the given archive
  */
 + (nullable instancetype)rarArchiveAtURL:(NSURL *)fileURL password:(NSString *)password __deprecated_msg("Use -initWithURL:password:error: instead");
-
 
 /**
  *  Do not use the default initializer
@@ -253,7 +277,7 @@ extern NSString *URKErrorDomain;
  *  Creates and returns an archive at the given path, with a given password
  *
  *  @param filePath A path to the archive file
- *  @param password The passowrd of the given archive
+ *  @param password The password of the given archive
  *  @param error    Contains any error during initialization
  *
  *  @return Returns an initialized URKArchive, unless there's a problem creating a bookmark to the path
@@ -264,7 +288,7 @@ extern NSString *URKErrorDomain;
  *  Creates and returns an archive at the given URL, with a given password
  *
  *  @param fileURL  The URL of the archive file
- *  @param password The passowrd of the given archive
+ *  @param password The password of the given archive
  *  @param error    Contains any error during initialization
  *
  *  @return Returns an initialized URKArchive, unless there's a problem creating a bookmark to the URL

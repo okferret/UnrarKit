@@ -1,5 +1,5 @@
 //
-//  NSString+UnrarKit.m
+//  NSString+UnrarKit.mm
 //  UnrarKit
 //
 //
@@ -14,6 +14,9 @@ RarHppIgnore
 @implementation NSString (UnrarKit)
 
 + (instancetype)stringWithUnichars:(wchar_t *)unichars {
+    if (!unichars) {
+        return @"";
+    }
     return [[NSString alloc] initWithBytes:unichars
                                     length:wcslen(unichars) * sizeof(*unichars)
                                   encoding:NSUTF32LittleEndianStringEncoding];
