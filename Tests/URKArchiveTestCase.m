@@ -36,6 +36,7 @@ static NSURL *originalLargeArchiveURL;
                            @"Test Archive (RAR5, Password).rar",
                            @"Test Archive (RAR5).rar",
                            @"Folder Archive.rar",
+                           @"Good CRC Archive.rar",
                            @"Modified CRC Archive.rar",
                            @"README.md",
                            @"Test File A.txt",
@@ -118,14 +119,14 @@ static NSURL *originalLargeArchiveURL;
     if (!self.testFailed && !tempDirContainsLargeArchive) {
         __block NSError *error = nil;
         
-        dispatch_semaphore_t sem = dispatch_semaphore_create(1);
+        dispatch_semaphore_t sem = dispatch_semaphore_create(0);
 
         dispatch_async(dispatch_get_main_queue(), ^{
             [[NSFileManager defaultManager] removeItemAtURL:self.tempDirectory error:&error];
             dispatch_semaphore_signal(sem);
         });
 
-        dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5000));
+        dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
         XCTAssertNil(error, @"Error deleting temp directory");
     }
     

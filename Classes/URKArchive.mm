@@ -37,8 +37,11 @@ typedef enum : NSUInteger {
 @interface URKArchive ()
 
 - (instancetype)initWithFile:(NSURL *)fileURL password:(NSString*)password error:(NSError * __autoreleasing *)error
-// iOS 7, macOS 10.9
-#if (defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED > 70000) || (defined(MAC_OS_X_VERSION_MIN_REQUIRED) && MAC_OS_X_VERSION_MIN_REQUIRED > 1090)
+// iOS 7 / tvOS 9 / watchOS 2 / macOS 10.9 and later
+#if (defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 70000) \
+ || (defined(MAC_OS_X_VERSION_MIN_REQUIRED) && MAC_OS_X_VERSION_MIN_REQUIRED >= 1090) \
+ || (defined(__TV_OS_VERSION_MAX_ALLOWED) && __TV_OS_VERSION_MAX_ALLOWED >= 90000) \
+ || (defined(__WATCH_OS_VERSION_MAX_ALLOWED) && __WATCH_OS_VERSION_MAX_ALLOWED >= 20000)
 NS_DESIGNATED_INITIALIZER
 #endif
 ;
@@ -219,7 +222,7 @@ NS_DESIGNATED_INITIALIZER
         if (error) {
             URKLogFault("Error creating fresh bookmark to RAR archive: %{public}@", error);
         }
-  }
+    }
 
     return result;
 }
@@ -251,7 +254,7 @@ NS_DESIGNATED_INITIALIZER
     
     if (fileInfo.count == 0) {
         URKLogInfo("No files in archive. Size == 0");
-        return 0;
+        return @0;
     }
         
     return [fileInfo valueForKeyPath:@"@sum.uncompressedSize"];
@@ -600,7 +603,7 @@ NS_DESIGNATED_INITIALIZER
             result = NO;
         }
         
-        if (progressBlock) {
+        if (progressBlock && fileInfo) {
             progressBlock(fileInfo, 1.0);
         }
 
@@ -895,8 +898,8 @@ NS_DESIGNATED_INITIALIZER
 }
 
 - (BOOL)extractBufferedDataFromFile:(NSString *)filePath
-                              error:(NSError * __autoreleasing *)error
-                             action:(void(^)(NSData *dataChunk, CGFloat percentDecompressed))action
+                               error:(NSError * __autoreleasing *)error
+                              action:(void(^)(NSData *dataChunk, CGFloat percentDecompressed))action
 {
     URKCreateActivity("Extracting Buffered Data");
 
@@ -910,7 +913,7 @@ NS_DESIGNATED_INITIALIZER
         URKCreateActivity("Performing action");
 
         int RHCode = 0, PFCode = 0;
-        URKFileInfo *fileInfo;
+        URKFileInfo *fileInfo = nil;
 
         URKLogInfo("Looping through files, looking for %{public}@...", filePath);
         
@@ -935,16 +938,23 @@ NS_DESIGNATED_INITIALIZER
                 }
             }
         }
-        
-        long long totalBytes = fileInfo.uncompressedSize;
-        progress.totalUnitCount = totalBytes;
-        
+
         if (![welf didReturnSuccessfully:RHCode]) {
             NSString *errorName = nil;
             [welf assignError:innerError code:RHCode errorName:&errorName];
             URKLogError("Header read yielded error: %{public}@ (%d)", errorName, RHCode);
             return;
         }
+
+        if (!fileInfo || ![fileInfo.filename isEqualToString:filePath]) {
+            NSString *errorName = nil;
+            [welf assignError:innerError code:URKErrorCodeArchiveNotFound errorName:&errorName];
+            URKLogError("File not found in archive: %{public}@", filePath);
+            return;
+        }
+
+        long long totalBytes = fileInfo.uncompressedSize;
+        progress.totalUnitCount = totalBytes;
 
         // Empty file, or a directory
         if (totalBytes == 0) {
@@ -1161,10 +1171,18 @@ NS_DESIGNATED_INITIALIZER
                 break;
             }
             
-            if (filePath && ![fileInfo.filename isEqualToString:filePath]) continue;
-            
             if (RHCode != ERAR_SUCCESS) {
                 break;
+            }
+            
+            if (filePath && ![fileInfo.filename isEqualToString:filePath]) {
+                // Skip this file and move to the next header
+                PFCode = RARProcessFile(welf.rarFile, RAR_SKIP, NULL, NULL);
+                if (PFCode != ERAR_SUCCESS) {
+                    RHCode = PFCode;
+                    break;
+                }
+                continue;
             }
             
             if ((PFCode = RARProcessFile(welf.rarFile, RAR_TEST, NULL, NULL)) != ERAR_SUCCESS) {
@@ -1177,7 +1195,6 @@ NS_DESIGNATED_INITIALIZER
             }
         }
     } inMode:RAR_OM_EXTRACT error:&performOnFilesError];
-    
     if (RHCode == ERAR_END_ARCHIVE) {
         RHCode = ERAR_SUCCESS;
     }
@@ -1348,7 +1365,7 @@ int CALLBACK AllowCancellationCallbackProc(UINT msg, long UserData, long P1, lon
     if (self.rarFile == 0 || self.flags->OpenResult != 0) {
         NSString *errorName = nil;
         [self assignError:error code:(NSInteger)self.flags->OpenResult errorName:&errorName];
-        URKLogError("Error opening archive: %{public}@ (%d)", errorName, self.flags->OpenResult);
+        URKLogError("Error opening archive: %{public}@ (%u)", errorName, self.flags->OpenResult);
         return NO;
     }
 
@@ -1389,7 +1406,7 @@ int CALLBACK AllowCancellationCallbackProc(UINT msg, long UserData, long P1, lon
     self.rarFile = 0;
 
     if (self.flags)
-        delete self.flags->ArcName;
+        free(self.flags->ArcName);
     delete self.flags; self.flags = 0;
     delete self.header; self.header = 0;
     return YES;
@@ -1476,87 +1493,88 @@ int CALLBACK AllowCancellationCallbackProc(UINT msg, long UserData, long P1, lon
     switch (errorCode) {
         case URKErrorCodeEndOfArchive:
             errorName = @"ERAR_END_ARCHIVE";
+            detail = NSLocalizedStringFromTableInBundle(@"Reached the end of the archive", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeNoMemory:
             errorName = @"ERAR_NO_MEMORY";
-            detail = NSLocalizedStringFromTableInBundle(@"Ran out of memory while reading archive", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"Ran out of memory while reading the archive. Try closing other applications to free up memory", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeBadData:
             errorName = @"ERAR_BAD_DATA";
-            detail = NSLocalizedStringFromTableInBundle(@"Archive has a corrupt header", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"The archive data is corrupt or the CRC checksum does not match. The archive may have been damaged during transfer or storage", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeBadArchive:
             errorName = @"ERAR_BAD_ARCHIVE";
-            detail = NSLocalizedStringFromTableInBundle(@"File is not a valid RAR archive", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"The file is not a valid RAR archive or the archive header is damaged", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeUnknownFormat:
             errorName = @"ERAR_UNKNOWN_FORMAT";
-            detail = NSLocalizedStringFromTableInBundle(@"RAR headers encrypted in unknown format", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"The archive uses an unsupported RAR format or version. Try updating to a newer version of UnrarKit", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeOpen:
             errorName = @"ERAR_EOPEN";
-            detail = NSLocalizedStringFromTableInBundle(@"Failed to open a reference to the file", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"Failed to open the archive file. Check that the file exists and you have permission to read it", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeCreate:
             errorName = @"ERAR_ECREATE";
-            detail = NSLocalizedStringFromTableInBundle(@"Failed to create the target directory for extraction", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"Failed to create the target directory or file for extraction. Check that you have write permission to the destination path", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeClose:
             errorName = @"ERAR_ECLOSE";
-            detail = NSLocalizedStringFromTableInBundle(@"Error encountered while closing the archive", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"An error was encountered while closing the archive", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeRead:
             errorName = @"ERAR_EREAD";
-            detail = NSLocalizedStringFromTableInBundle(@"Error encountered while reading the archive", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"An error was encountered while reading the archive. The file may be incomplete or the storage medium may have an error", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeWrite:
             errorName = @"ERAR_EWRITE";
-            detail = NSLocalizedStringFromTableInBundle(@"Error encountered while writing a file to disk", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"An error was encountered while writing a file to disk. Check that you have sufficient disk space and write permission", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeSmall:
             errorName = @"ERAR_SMALL_BUF";
-            detail = NSLocalizedStringFromTableInBundle(@"Buffer too small to contain entire comments", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"The buffer is too small to contain the archive's comments", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeUnknown:
             errorName = @"ERAR_UNKNOWN";
-            detail = NSLocalizedStringFromTableInBundle(@"An unknown error occurred", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"An unknown error occurred while processing the archive", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeMissingPassword:
             errorName = @"ERAR_MISSING_PASSWORD";
-            detail = NSLocalizedStringFromTableInBundle(@"No password given to unlock a protected archive", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"No password was provided to unlock this password-protected archive. Use -initWithURL:password:error: to supply a password", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         case URKErrorCodeArchiveNotFound:
             errorName = @"ERAR_ARCHIVE_NOT_FOUND";
-            detail = NSLocalizedStringFromTableInBundle(@"Unable to find the archive", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"The specified file was not found within the archive", @"UnrarKit", _resources, @"Error detail string");
             break;
             
         case URKErrorCodeUserCancelled:
             errorName = @"ERAR_USER_CANCELLED";
-            detail = NSLocalizedStringFromTableInBundle(@"User cancelled the operation in progress", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"The operation was cancelled by the user", @"UnrarKit", _resources, @"Error detail string");
             break;
-            
 
         case URKErrorCodeStringConversion:
             errorName = @"ERAR_UTF8_PATH_CONVERSION";
-            detail = NSLocalizedStringFromTableInBundle(@"Error converting a string to UTF-8", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"Failed to convert a file path to UTF-8 encoding. The path may be too long or contain unsupported characters", @"UnrarKit", _resources, @"Error detail string");
             break;
+
         case URKErrorCodeBadPassword:
             URKLogError("If you're seeing this, you should be calling -[URKArchive validatePassword] before attempting to extract from a password-protected archive");
             errorName = @"ERAR_BAD_PASSWORD";
-            detail = NSLocalizedStringFromTableInBundle(@"Provided password is incorrect", @"UnrarKit", _resources, @"Error detail string");
+            detail = NSLocalizedStringFromTableInBundle(@"The provided password is incorrect. Use -validatePassword before extracting from a password-protected archive", @"UnrarKit", _resources, @"Error detail string");
             break;
 
         default:
@@ -1582,9 +1600,12 @@ int CALLBACK AllowCancellationCallbackProc(UINT msg, long UserData, long P1, lon
     *outErrorName = [self errorNameForErrorCode:errorCode detail:&errorDetail];
 
     if (error) {
+        // NSLocalizedDescriptionKey: 简短的人类可读描述（错误名称）
+        // NSLocalizedFailureReasonErrorKey: 失败原因（详细说明）
+        // NSLocalizedRecoverySuggestionErrorKey: 恢复建议（详细说明，与失败原因相同）
         NSMutableDictionary *userInfo = [NSMutableDictionary dictionaryWithDictionary:
-                                         @{NSLocalizedFailureReasonErrorKey: *outErrorName,
-                                           NSLocalizedDescriptionKey: errorDetail,
+                                         @{NSLocalizedDescriptionKey: errorDetail,
+                                           NSLocalizedFailureReasonErrorKey: *outErrorName,
                                            NSLocalizedRecoverySuggestionErrorKey: errorDetail}];
         
         if (self.fileURL) {

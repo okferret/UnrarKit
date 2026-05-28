@@ -1,279 +1,390 @@
+# UnrarKit
+
 [![Build Status](https://travis-ci.com/abbeycode/UnrarKit.svg?branch=master)](https://travis-ci.com/abbeycode/UnrarKit)
-[![Cocoapods](https://img.shields.io/cocoapods/v/UnrarKit.svg)](https://cocoapods.org/pods/UnrarKit)
-[![Carthage compatible](https://img.shields.io/badge/Carthage-compatible-4BC51D.svg?style=flat)](https://github.com/Carthage/Carthage)
-[![Cocoapods platforms](https://img.shields.io/cocoapods/p/UnrarKit.svg)]()
+[![Swift Package Manager compatible](https://img.shields.io/badge/SPM-compatible-brightgreen.svg)](https://swift.org/package-manager/)
 
-# About
+## 简介
 
-UnrarKit is here to enable Mac and iOS apps to easily work with RAR files for read-only operations. It is currently based on version 5.8.1 of the [UnRAR library](http://www.rarlab.com/rar/unrarsrc-5.8.1.tar.gz).
+UnrarKit 是一个面向 macOS 和 iOS 平台的 Objective-C 框架，用于对 RAR 格式压缩文件进行**只读**操作。底层基于 [UnRAR 库](http://www.rarlab.com/rar/unrarsrc-5.8.1.tar.gz) 5.8.1 版本构建。
 
-There is a main project, with unit tests, and a basic iOS example project, which demonstrates how to use the library. To see all of these, open the main workspace file.
+项目包含主工程（含单元测试）和一个基础 iOS 示例工程，演示了如何使用该库。打开主工作区文件即可查看所有内容。
 
-I'm always open to improvements, so please submit your pull requests, or [create issues](https://github.com/abbeycode/UnrarKit/issues) for someone else to implement.
+欢迎提交 Pull Request 或[创建 Issue](https://github.com/abbeycode/UnrarKit/issues)。
 
+---
 
-# Installation
+## 平台支持
 
-UnrarKit supports both [CocoaPods](https://cocoapods.org/) and [Carthage](https://github.com/Carthage/Carthage). CocoaPods does not support dynamic framework targets (as of v0.39.0), so in that case, please use Carthage.
+| 平台    | 最低版本 |
+|---------|---------|
+| macOS   | 10.15+  |
+| iOS     | 13.0+   |
+| tvOS    | 13.0+   |
+| watchOS | 6.0+    |
 
-Cartfile:
+---
 
-    github "abbeycode/UnrarKit"
+## 安装
 
-Podfile:
+### Swift Package Manager（推荐）
 
-    pod "UnrarKit"
+在 `Package.swift` 中添加依赖：
 
-# Example Usage
+```swift
+dependencies: [
+    .package(url: "https://github.com/abbeycode/UnrarKit.git", from: "2.0.0")
+]
+```
 
-```Objective-C
+或在 Xcode 中通过 **File → Add Packages…** 搜索仓库地址添加。
+
+---
+
+## 快速开始
+
+### 初始化归档对象
+
+```objc
 NSError *archiveError = nil;
+
+// 通过文件路径初始化
 URKArchive *archive = [[URKArchive alloc] initWithPath:@"An Archive.rar" error:&archiveError];
+
+// 或通过 URL 初始化
+URKArchive *archive = [[URKArchive alloc] initWithURL:fileURL error:&archiveError];
+```
+
+### 检测文件是否为 RAR 格式
+
+```objc
+BOOL isRAR = [URKArchive pathIsARAR:@"/path/to/file.rar"];
+BOOL isRAR = [URKArchive urlIsARAR:fileURL];
+```
+
+---
+
+## 主要功能
+
+### 列出归档中的文件名
+
+```objc
 NSError *error = nil;
-```
-
-## Listing the file names in an archive
-```Objective-C
-NSArray<String*> *filesInArchive = [archive listFilenames:&error];
+NSArray<NSString *> *filesInArchive = [archive listFilenames:&error];
 for (NSString *name in filesInArchive) {
-    NSLog(@"Archived file: %@", name);
+    NSLog(@"归档文件: %@", name);
 }
 ```
 
-## Listing the file details in an archive
-```Objective-C
-NSArray<URKFileInfo*> *fileInfosInArchive = [archive listFileInfo:&error];
+### 列出归档中的文件详情
+
+```objc
+NSError *error = nil;
+NSArray<URKFileInfo *> *fileInfosInArchive = [archive listFileInfo:&error];
 for (URKFileInfo *info in fileInfosInArchive) {
-    NSLog(@"Archive name: %@ | File name: %@ | Size: %lld", info.archiveName, info.filename, info.uncompressedSize);
+    NSLog(@"归档名: %@ | 文件名: %@ | 大小: %lld",
+          info.archiveName, info.filename, info.uncompressedSize);
 }
 ```
 
-## Working with passwords
-```Objective-C
-NSArray<URKFileInfo*> *fileInfosInArchive = [archive listFileInfo:&error];
-if (archive.isPasswordProtected) {
-    NSString *givenPassword = // prompt user
-    archive.password = givenPassword
-}
+### 遍历文件信息（迭代器方式）
 
-// You can now extract the files
+```objc
+NSError *error = nil;
+[archive iterateFileInfo:^(URKFileInfo *fileInfo, BOOL *stop) {
+    NSLog(@"文件: %@, 压缩方式: %lu", fileInfo.filename, (unsigned long)fileInfo.compressionMethod);
+    // 设置 *stop = YES 可提前终止遍历
+} error:&error];
 ```
 
-## Extracting files to a directory
-```Objective-C
-BOOL extractFilesSuccessful = [archive extractFilesTo:@"some/directory"
-                                            overWrite:NO
-                                                error:&error];
+### 解压所有文件到目录
+
+```objc
+NSError *error = nil;
+BOOL success = [archive extractFilesTo:@"some/directory"
+                              overwrite:NO
+                                  error:&error];
 ```
 
-## Extracting a file into memory
-```Objective-C
+### 解压单个文件到内存
+
+```objc
+NSError *error = nil;
 NSData *extractedData = [archive extractDataFromFile:@"a file in the archive.jpg"
                                                error:&error];
 ```
 
-## Streaming a file
+### 流式解压（适合大文件）
 
-For large files, you may not want the whole contents in memory at once. You can handle it one "chunk" at a time, like so:
+对于大文件，可以分块处理，避免一次性占用大量内存：
 
-```Objective-C
+```objc
+NSError *error = nil;
 BOOL success = [archive extractBufferedDataFromFile:@"a file in the archive.jpg"
                                               error:&error
                                              action:
                 ^(NSData *dataChunk, CGFloat percentDecompressed) {
-                    NSLog(@"Decompressed: %f%%", percentDecompressed);
-                    // Do something with the NSData chunk
+                    NSLog(@"已解压: %.1f%%", percentDecompressed * 100);
+                    // 处理每个数据块
                 }];
 ```
 
-# Progress Reporting
+### 对归档中每个文件执行操作
 
-The following methods support `NSProgress` and `NSProgressReporting`:
+```objc
+NSError *error = nil;
 
-* `extractFilesTo:overwrite:error:`
-* `extractData:error:`
-* `extractDataFromFile:error:`
-* `performOnFilesInArchive:error:`
-* `performOnDataInArchive:error:`
-* `extractBufferedDataFromFile:error:action:`
+// 仅操作文件信息（按字母顺序）
+[archive performOnFilesInArchive:^(URKFileInfo *fileInfo, BOOL *stop) {
+    NSLog(@"处理文件: %@", fileInfo.filename);
+} error:&error];
 
-## Using implicit `NSProgress` hierarchy
-
-You can create your own instance of `NSProgress` and observe its `fractionCompleted` property with KVO to monitor progress like so:
-
-```Objective-C
-    static void *ExtractDataContext = &ExtractDataContext;
-
-    URKArchive *archive = [[URKArchive alloc] initWithURL:aFileURL error:nil];
-
-    NSProgress *extractDataProgress = [NSProgress progressWithTotalUnitCount:1];
-    [extractDataProgress becomeCurrentWithPendingUnitCount:1];
-
-    NSString *observedSelector = NSStringFromSelector(@selector(fractionCompleted));
-
-    [extractDataProgress addObserver:self
-                          forKeyPath:observedSelector
-                             options:NSKeyValueObservingOptionInitial
-                             context:ExtractDataContext];
-
-    NSError *extractError = nil;
-    NSData *data = [archive extractDataFromFile:firstFile error:&extractError];
-
-    [extractDataProgress resignCurrent];
-    [extractDataProgress removeObserver:self forKeyPath:observedSelector];
+// 操作文件信息及其数据
+[archive performOnDataInArchive:^(URKFileInfo *fileInfo, NSData *fileData, BOOL *stop) {
+    NSLog(@"文件: %@, 数据大小: %lu", fileInfo.filename, (unsigned long)fileData.length);
+} error:&error];
 ```
 
-## Using your own explicit `NSProgress` instance
+### 列出多卷归档的所有卷
 
-If you don't have a hierarchy of `NSProgress` instances, or if you want to observe more details during progress updates in `extractFilesTo:overwrite:error:`, you can create your own instance of `NSProgress` and set the `URKArchive` instance's `progress` property, like so:
-
-```Objective-C
-    static void *ExtractFilesContext = &ExtractFilesContext;
-
-    URKArchive *archive = [[URKArchive alloc] initWithURL:aFileURL error:nil];
-
-    NSProgress *extractFilesProgress = [NSProgress progressWithTotalUnitCount:1];
-    archive.progress = extractFilesProgress;
-
-    NSString *observedSelector = NSStringFromSelector(@selector(localizedDescription));
-
-    [self.descriptionsReported removeAllObjects];
-    [extractFilesProgress addObserver:self
-                           forKeyPath:observedSelector
-                              options:NSKeyValueObservingOptionInitial
-                              context:ExtractFilesContext];
-
-    NSError *extractError = nil;
-    BOOL success = [archive extractFilesTo:extractURL.path
-                                 overwrite:NO
-                                     error:&extractError];
-
-    [extractFilesProgress removeObserver:self forKeyPath:observedSelector];
+```objc
+NSError *error = nil;
+NSArray<NSURL *> *volumes = [archive listVolumeURLs:&error];
 ```
 
-## Cancellation with `NSProgress`
+---
 
-Using either method above, you can call `[progress cancel]` to stop the operation in progress. It will cause the operation to fail, returning `nil` or `NO` (depending on the return type, and give an error with error code `URKErrorCodeUserCancelled`.
+## 密码保护归档
 
+### 初始化时指定密码
 
-# Notes
+```objc
+NSError *error = nil;
+URKArchive *archive = [[URKArchive alloc] initWithPath:@"encrypted.rar"
+                                              password:@"myPassword"
+                                                 error:&error];
+```
 
-To open in Xcode, use the [UnrarKit.xcworkspace](UnrarKit.xcworkspace) file, which includes the other projects.
+### 动态设置密码
 
-## The example app
+```objc
+NSError *error = nil;
+NSArray<URKFileInfo *> *fileInfos = [archive listFileInfo:&error];
 
-Included in the source repo is a project named "UnrarExample", that builds as part of the main solution. It's only ever verified to run in the simulator, but if you provide Team info, it should probably also run on-device.
+if ([archive isPasswordProtected]) {
+    NSString *password = // 提示用户输入密码
+    archive.password = password;
+}
 
-For large file extraction, the tool uses the `rar` executable. You may need to right-click and open it in Finder to get through Gatekeeper the first time you do so.
+// 现在可以解压文件
+```
 
+### 验证密码
 
-# Documentation
+```objc
+BOOL isValid = [archive validatePassword];
+```
 
-Full documentation for the project is available on [CocoaDocs](http://cocoadocs.org/docsets/UnrarKit).
+---
 
+## 数据完整性校验
 
-# Logging
+```objc
+// 校验整个归档
+BOOL isValid = [archive checkDataIntegrity];
 
-For all OS versions from 2016 onward (macOS 10.12, iOS 10, tvOS 10, watchOS 3), UnzipKit uses the new [Unified Logging framework](https://developer.apple.com/documentation/os/logging) for logging and Activity Tracing. You can view messages at the Info or Debug level to view more details of how UnzipKit is working, and use Activity Tracing to help pinpoint the code path that's causing a particular error.
+// 校验单个文件
+BOOL isValid = [archive checkDataIntegrityOfFile:@"file.txt"];
 
-As a fallback, regular `NSLog` is used on older OSes, with all messages logged at the same level.
+// 校验时允许用户决定是否忽略 CRC 不匹配
+BOOL isValid = [archive checkDataIntegrityIgnoringCRCMismatches:^BOOL {
+    // 在主线程上调用，可弹出提示框让用户决定
+    return YES; // 返回 YES 则忽略 CRC 不匹配
+}];
+```
 
-When debugging your own code, if you'd like to decrease the verbosity of the UnrarKit framework, you can run the following command:
+---
 
-    sudo log config --mode "level:default" --subsystem com.abbey-code.UnrarKit
+## 进度报告
 
-The available levels, in order of increasing verbosity, are `default`, `info`, `debug`, with `debug` being the default.
+以下方法支持 `NSProgress` 和 `NSProgressReporting`：
 
-## Logging guidelines
+- `extractFilesTo:overwrite:error:`
+- `extractData:error:`
+- `extractDataFromFile:error:`
+- `performOnFilesInArchive:error:`
+- `performOnDataInArchive:error:`
+- `extractBufferedDataFromFile:error:action:`
 
-These are the general rules governing the particulars of how activities and log messages are classified and written. They were written after the initial round of log messages were, so there may be some inconsistencies (such as an incorrect log level). If you think you spot one, open an issue or a pull request!
+### 使用隐式 NSProgress 层级
 
-### Logging
+```objc
+static void *ExtractDataContext = &ExtractDataContext;
 
-Log messages should follow these conventions.
+URKArchive *archive = [[URKArchive alloc] initWithURL:aFileURL error:nil];
 
-1. Log messages don't have final punctuation (like these list items)
-1. Messages that note a C function is about to be called, rather than a higher level UnrarKit or Cocoa method, end with "...", since it's not expected for them to log any details of their own
+NSProgress *extractDataProgress = [NSProgress progressWithTotalUnitCount:1];
+[extractDataProgress becomeCurrentWithPendingUnitCount:1];
 
-#### Default log level
+NSString *observedSelector = NSStringFromSelector(@selector(fractionCompleted));
+[extractDataProgress addObserver:self
+                      forKeyPath:observedSelector
+                         options:NSKeyValueObservingOptionInitial
+                         context:ExtractDataContext];
 
-There should be no messages at this level, so that it's possible for a consumer of the API to turn off _all_ diagnostic logging from it, as detailed above. It's only possible to `log config --mode "level:off"` for a process, not a subsystem.
+NSError *extractError = nil;
+NSData *data = [archive extractDataFromFile:firstFile error:&extractError];
 
-#### Info log level
+[extractDataProgress resignCurrent];
+[extractDataProgress removeObserver:self forKeyPath:observedSelector];
+```
 
-Info level log statements serve the following specific purposes.
+### 使用显式 NSProgress 实例
 
-1. Major action is taken, such as initializing an archive object, or deleting a file from an archive
-1. Noting each public method has been called, and the arguments with which it was called
-1. Signposting the major actions a public method takes
-1. Notifying that an atypical condition has occurred (such as an action causing an early stop in a block or a NO return value)
-1. Noting that a loop is about to occur, which will contain debug-level messages for each iteration
+```objc
+static void *ExtractFilesContext = &ExtractFilesContext;
 
-#### Debug log level
+URKArchive *archive = [[URKArchive alloc] initWithURL:aFileURL error:nil];
 
-Most messages fall into this category, making it extremely verbose. All non-error messages that don't fall into either of the other two categories should be debug-level, with some examples of specific cases below.
+NSProgress *extractFilesProgress = [NSProgress progressWithTotalUnitCount:1];
+archive.progress = extractFilesProgress;
 
-1. Any log message in a private method
-1. Noting variable and argument values in a method
-1. Indicating that everything is working as expected
-1. Indicating what happens during each iteration of a loop (or documenting that an iteration has happened at all)
+NSString *observedSelector = NSStringFromSelector(@selector(localizedDescription));
+[extractFilesProgress addObserver:self
+                       forKeyPath:observedSelector
+                          options:NSKeyValueObservingOptionInitial
+                          context:ExtractFilesContext];
 
-#### Error log level
+NSError *extractError = nil;
+BOOL success = [archive extractFilesTo:extractURL.path
+                             overwrite:NO
+                                 error:&extractError];
 
-1. Every `NSError` generated should get logged with the same detail message as the `NSError` object itself
-1. `NSError` log messages should contain the string of the error code's enumeration value (e.g. `"URKErrorCodeArchiveNotFound"`) when it is known at design time
-1. Errors should reported everywhere they're encountered, making it easier to trace their flows through the call stack
-1. Early exits that result in desired work not being performed
+[extractFilesProgress removeObserver:self forKeyPath:observedSelector];
+```
 
-#### Fault log level
+### 取消操作
 
-Used when a Cocoa framework method comes back with an error. There are only a handful of uses
+通过上述任一方式，调用 `[progress cancel]` 即可停止当前操作。操作将失败并返回 `nil` 或 `NO`，同时返回错误码 `URKErrorCodeUserCancelled`。
 
-### Activities
-1. Public methods have an English activity names with spaces, and are title-case
-1. Private methods each have an activity with the method's name
-1. Sub-activities are created for significant scope changes, such as when inside an action block, but not if no significant work is done before entering that action
-1. Top-level activities within a method have variables named `activity`, with more specific labels given to sub-activities
-1. If a method is strictly an overload that calls out to another overload without doing anything else, it should not define its own activity
+---
 
-# Pushing a new CocoaPods version
+## URKFileInfo 属性说明
 
-New tagged builds (in any branch) get pushed to CocoaPods automatically, provided they meet the following criteria:
+| 属性                  | 类型                    | 说明                   |
+|-----------------------|-------------------------|------------------------|
+| `archiveName`         | `NSString *`            | 所属归档文件名         |
+| `filename`            | `NSString *`            | 文件名（含路径）       |
+| `timestamp`           | `NSDate *`              | 文件时间戳             |
+| `CRC`                 | `NSUInteger`            | CRC 校验值             |
+| `uncompressedSize`    | `long long`             | 解压后大小（字节）     |
+| `compressedSize`      | `long long`             | 压缩后大小（字节）     |
+| `isDirectory`         | `BOOL`                  | 是否为目录             |
+| `compressionMethod`   | `URKCompressionMethod`  | 压缩方式               |
+| `hostOS`              | `URKHostOS`             | 创建归档的操作系统     |
 
-1. All builds and tests succeed
-2. The library builds successfully for CocoaPods and for Carthage
-3. The build is tagged with something resembling a version number (`#.#.#(-beta#)`, e.g. **2.9** or **2.9-beta5**)
-4. `pod spec lint` passes, making sure the CocoaPod is 100% valid
+---
 
-Before pushing a build, you must:
+## 错误码说明
 
-1. Add the release notes to the [CHANGELOG.md](CHANGELOG.md), and commit
-2. Run [set-version](Scripts/set-version.sh), like so:
+| 错误码                          | 说明                         |
+|---------------------------------|------------------------------|
+| `URKErrorCodeEndOfArchive`      | 已读取到归档末尾             |
+| `URKErrorCodeNoMemory`          | 内存不足                     |
+| `URKErrorCodeBadData`           | 数据 CRC 校验失败            |
+| `URKErrorCodeBadArchive`        | 无效的 RAR 归档              |
+| `URKErrorCodeUnknownFormat`     | 不支持的 RAR 格式或版本      |
+| `URKErrorCodeOpen`              | 无法打开文件                 |
+| `URKErrorCodeCreate`            | 无法创建目标目录             |
+| `URKErrorCodeClose`             | 无法关闭归档                 |
+| `URKErrorCodeRead`              | 读取归档失败                 |
+| `URKErrorCodeWrite`             | 写入文件失败                 |
+| `URKErrorCodeArchiveNotFound`   | 归档文件未找到               |
+| `URKErrorCodeUserCancelled`     | 用户取消了操作               |
+| `URKErrorCodeStringConversion`  | 字符串转换为 UTF-8 失败      |
 
-    `./Scripts/set-version.sh <version number>`
+---
 
-    This does the following:
+## 日志
 
-    1. Updates the [UnrarKit-Info.plist](Resources/UnrarKit-Info.plist) file to indicate the new version number, and commits it
+对于 2016 年及以后的系统（macOS 10.12、iOS 10、tvOS 10、watchOS 3），UnrarKit 使用 Apple 的[统一日志框架](https://developer.apple.com/documentation/os/logging)进行日志记录和活动追踪。可通过 Info 或 Debug 级别查看详细运行信息。
 
-    2. Makes an annotated tag whose message contains the release notes entered in Step 1
+旧版系统回退使用 `NSLog`，所有消息以相同级别输出。
 
-Once that's done, you can call `git push --follow-tags` [<sup id=a1>1</sup>](#f1), and let [Travis CI](https://travis-ci.org/abbeycode/UnrarKit/builds) take care of the rest.
+### 调整日志级别
 
-_Note: if the push to CocoaPods fails in Travis CI, it's almost certainly because the Trunk token has expired. Follow [this Stack Overflow answer](https://stackoverflow.com/a/31511532/105717)'s instructions to fix it. Next time, try `pod trunk me`_
+如需降低 UnrarKit 的日志详细程度，可运行：
 
-# Credits
+```bash
+sudo log config --mode "level:default" --subsystem com.abbey-code.UnrarKit
+```
 
-* Dov Frankel (dov@abbey-code.com)
-* Rogerio Pereira Araujo (rogerio.araujo@gmail.com)
-* Vicent Scott (vkan388@gmail.com)
+可用级别（详细程度递增）：`default` → `info` → `debug`，默认为 `debug`。
 
+### 日志规范
 
+#### 各级别用途
 
-<hr>
+| 级别      | 用途                                                                 |
+|-----------|----------------------------------------------------------------------|
+| `default` | 无消息（允许消费者完全关闭诊断日志）                                 |
+| `info`    | 主要操作（初始化、删除文件）、公共方法调用及参数、非典型条件         |
+| `debug`   | 私有方法、变量值、循环迭代详情                                       |
+| `error`   | 每个 `NSError` 生成时记录，包含错误码枚举名称                        |
+| `fault`   | Cocoa 框架方法返回错误时使用                                         |
 
-<span id="f1">1</span>: Or set `followTags = true` in your git config to always get this behavior:
+---
 
-    git config --global push.followTags true
+## 在 Xcode 中打开
 
-[↩](#a1)
+使用 [`UnrarKit.xcworkspace`](UnrarKit.xcworkspace) 文件打开项目，该工作区包含所有子项目。
+
+### 示例应用
+
+仓库中包含名为 **UnrarExample** 的 iOS 示例项目，已验证可在模拟器中运行。如需在真机运行，请配置 Team 信息。
+
+---
+
+## 发布新版本
+
+新的标签构建（任意分支）满足以下条件时将自动发布：
+
+1. 所有构建和测试通过
+2. 标签符合版本号格式（`#.#.#(-beta#)`，如 **2.9** 或 **2.9-beta5**）
+
+### 发布步骤
+
+1. 将发布说明添加到 [`CHANGELOG.md`](CHANGELOG.md) 并提交
+2. 运行版本设置脚本：
+
+    ```bash
+    ./Scripts/set-version.sh <版本号>
+    ```
+
+    该脚本将：
+    - 更新 [`Resources/UnrarKit-Info.plist`](Resources/UnrarKit-Info.plist) 中的版本号并提交
+    - 创建包含发布说明的带注释标签
+
+3. 推送代码和标签：
+
+    ```bash
+    git push --follow-tags
+    ```
+
+    > 可通过以下命令设置默认推送标签：
+    > ```bash
+    > git config --global push.followTags true
+    > ```
+
+---
+
+## 贡献者
+
+- Dov Frankel (dov@abbey-code.com)
+- Rogerio Pereira Araujo (rogerio.araujo@gmail.com)
+- Vicent Scott (vkan388@gmail.com)
+
+---
+
+## 许可证
+
+UnrarKit 基于 unRAR 库构建，使用须遵守 [unRAR 许可证](Libraries/unrar/license.txt)的相关条款（禁止将 unRAR 源代码用于重新创建 RAR 压缩算法）。

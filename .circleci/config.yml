@@ -15,12 +15,7 @@ workflows:
       - test-ExampleApp
 
       # Validation
-      - validate-CocoaPods:
-          requires:
-            - test-Mac
-            - test-iOS
-            - test-ExampleApp
-      - validate-Carthage:
+      - validate-SPM:
           requires:
             - test-Mac
             - test-iOS
@@ -35,8 +30,7 @@ workflows:
 #            tags:
 #              only: /.*/
 #          requires:
-#            - validate-CocoaPods
-#            - validate-Carthage
+#            - validate-SPM
 
 jobs:
   test-Mac:
@@ -60,17 +54,11 @@ jobs:
       # The CLANG arguments and find command fail the build on analyzer errors
       - run: xcodebuild -workspace UnrarKit.xcworkspace -scheme UnrarExample -sdk iphonesimulator -configuration Release analyze CLANG_ANALYZER_OUTPUT=html CLANG_ANALYZER_OUTPUT_DIR=analyzer-output && [[ -z `find analyzer-output -name "*.html"` ]]
 
-  validate-CocoaPods:
+  validate-SPM:
     executor: my-xcode
     steps:
       - checkout
-      - run: ./Scripts/cocoapod-validate.sh
-
-  validate-Carthage:
-    executor: my-xcode
-    steps:
-      - checkout
-      - run: ./Scripts/carthage-validate.sh
+      - run: xcrun --toolchain com.apple.dt.toolchain.XcodeDefault swift build
 
 #  release:
 #    executor: my-xcode

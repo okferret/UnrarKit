@@ -6,7 +6,6 @@ branches:
   - circle-ci
 
 before_script:
-    - pod --version
     # Make log level less verbose. Temporarily undo if more info is needed
     - sudo log config --mode "level:default"
 
@@ -28,12 +27,8 @@ matrix:
       script: xcodebuild -workspace UnrarKit.xcworkspace -scheme UnrarExample -sdk iphonesimulator -configuration Release analyze CLANG_ANALYZER_OUTPUT=html CLANG_ANALYZER_OUTPUT_DIR=analyzer-output && [[ -z `find analyzer-output -name "*.html"` ]]
 
     - stage: Validate
-      env: Name=CocoaPods
-      script: ./Scripts/cocoapod-validate.sh
-
-    - stage: Validate
-      env: Name=Carthage
-      script: ./Scripts/carthage-validate.sh
+      env: Name=SPM
+      script: xcrun --toolchain com.apple.dt.toolchain.XcodeDefault swift build
 
     - stage: Release
       if: tag IS present

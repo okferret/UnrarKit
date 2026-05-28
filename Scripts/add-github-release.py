@@ -1,14 +1,14 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 
-# Usage: add-github-release.py <API token> <repo> <tag being released> <release notes>
+# Usage: add-github-release.py <API token> <repo> <tag being released> <archive path> <release notes>
 #
-# Creates a release in GitHub for the given tag
+# Creates a release in GitHub for the given tag and uploads the xcframework archive
 #
 
 import json
 import os
-import urllib2
+import urllib.request
 import sys
 
 def add_release(token, repo, tag, archive_path, notes):
@@ -27,8 +27,9 @@ def add_release(token, repo, tag, archive_path, notes):
     is_beta = tag_is_beta(tag)
 
     url = 'https://api.github.com/repos/{}/releases'.format(repo)
-    header = {
-        'Authorization': 'token {}'.format(token)
+    headers = {
+        'Authorization': 'token {}'.format(token),
+        'Content-Type': 'application/json'
     }
     values = {
         'tag_name': tag,
@@ -37,16 +38,16 @@ def add_release(token, repo, tag, archive_path, notes):
         'prerelease': True if is_beta else False
     }
     
-    data = json.dumps(values)
-    request = urllib2.Request(url, data, header)
-    response = urllib2.urlopen(request)
-    the_page = response.read()
+    data = json.dumps(values).encode('utf-8')
+    request = urllib.request.Request(url, data=data, headers=headers)
+    with urllib.request.urlopen(request) as response:
+        the_page = response.read()
     
     response_dict = json.loads(the_page)
     upload_url = response_dict['upload_url']
     release_url = response_dict['url']
     
-    upload_carthage_archive(token, upload_url, archive_path)
+    upload_xcframework_archive(token, upload_url, archive_path)
 
     print('Release added: {}'.format(release_url))
     return True
@@ -77,33 +78,30 @@ def tag_is_beta(tag):
     
     return 'beta' in tag or 'RC' in tag or 'prerelease' in tag or 'alpha' in tag
 
-def upload_carthage_archive(token, upload_url, archive_path):
+def upload_xcframework_archive(token, upload_url, archive_path):
     '''
-    Uploads the archive at the given path to GitHub for the release specified
+    Uploads the xcframework archive at the given path to GitHub for the release specified
     '''
     
     upload_url = upload_url.split('{')[0]
-    url = '{}?name={}'.format(upload_url, archive_path)
-    header = {
+    archive_name = os.path.basename(archive_path)
+    url = '{}?name={}'.format(upload_url, archive_name)
+    headers = {
         'Authorization': 'token {}'.format(token),
-        'Content-Type': 'application/zip'
+        'Content-Type': 'application/zip',
+        'Content-Length': str(os.path.getsize(archive_path))
     }
 
-    with FileWithLen(archive_path, 'r') as f:
-        request = urllib2.Request(url, f, header)
-        response = urllib2.urlopen(request)
+    with open(archive_path, 'rb') as f:
+        data = f.read()
     
-    page = response.read()    
+    request = urllib.request.Request(url, data=data, headers=headers)
+    with urllib.request.urlopen(request) as response:
+        page = response.read()
+    
     response_dict = json.loads(page)
     return True
 
-class FileWithLen(file):
-    def __init__(self, *args, **keyws):
-        file.__init__(self, *args, **keyws)
-
-    def __len__(self):
-        return int(os.fstat(self.fileno())[6])
-    
     
 if __name__ == '__main__':
     # Allow script to be called with 'test' argument

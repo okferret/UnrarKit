@@ -13,6 +13,14 @@
 
 #pragma mark - checkDataIntegrity
 
+- (void)testCheckDataIntegrity_GoodCRCArchive {
+    NSURL *testArchiveURL = self.testFileURLs[@"Good CRC Archive.rar"];
+    URKArchive *archive = [[URKArchive alloc] initWithURL:testArchiveURL error:nil];
+    
+    BOOL success = [archive checkDataIntegrity];
+    XCTAssertTrue(success, @"Data integrity check failed for Good CRC Archive");
+}
+
 - (void)testCheckDataIntegrity {
     NSArray *testArchives = @[@"Test Archive.rar",
                               @"Test Archive (Password).rar",

@@ -130,8 +130,11 @@ extern NSString *URKErrorDomain;
  *  An Objective-C/Cocoa wrapper around the unrar library
  */
 @interface URKArchive : NSObject
-// Minimum of iOS 9, macOS 10.11 SDKs
-#if (defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED > 90000) || (defined(MAC_OS_X_VERSION_MIN_REQUIRED) && MAC_OS_X_VERSION_MIN_REQUIRED > 101100)
+// Minimum of iOS 9 / tvOS 9 / watchOS 2 / macOS 10.11 SDKs
+#if (defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 90000) \
+ || (defined(MAC_OS_X_VERSION_MIN_REQUIRED) && MAC_OS_X_VERSION_MIN_REQUIRED >= 101100) \
+ || (defined(__TV_OS_VERSION_MAX_ALLOWED) && __TV_OS_VERSION_MAX_ALLOWED >= 90000) \
+ || (defined(__WATCH_OS_VERSION_MAX_ALLOWED) && __WATCH_OS_VERSION_MAX_ALLOWED >= 20000)
 <NSProgressReporting>
 #endif
 

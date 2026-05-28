@@ -1,8 +1,91 @@
-build
+# ===========================
+# macOS
+# ===========================
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
 
-CarthageValidation
-analyzer-output
-
-**/*.xccheckout
+# ===========================
+# Xcode
+# ===========================
+build/
+DerivedData/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
 **/xcuserdata/*
+*.xccheckout
+**/*.xccheckout
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+*.xcsettings
+
+# Xcode Playground
+timeline.xctimeline
+playground.xcworkspace
+
+# ===========================
+# Swift Package Manager
+# ===========================
+.build/
+.swiftpm/
+*.resolved
+Package.resolved
+
+# ===========================
+# CocoaPods (已移除支持，保留 xcworkspace 排除规则)
+# ===========================
+*.xcworkspace
+!UnrarKit.xcworkspace
+
+# ===========================
+# fastlane
+# ===========================
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# ===========================
+# Code coverage
+# ===========================
+*.gcno
+*.gcda
+*.gcov
+
+# ===========================
+# Build artifacts
+# ===========================
+analyzer-output/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# ===========================
+# Misc
+# ===========================
+*.log
+*.tmp
+*.swp
+*~
