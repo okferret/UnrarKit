@@ -147,6 +147,8 @@ typedef NS_ENUM(NSUInteger, URKRedirectType) {
     URKRedirectTypeFileCopy      = 5,
 };
 
+NS_ASSUME_NONNULL_BEGIN
+
 /**
  *  A wrapper around a RAR archive's file header, defining the various fields
  *  it contains
@@ -165,9 +167,10 @@ typedef NS_ENUM(NSUInteger, URKRedirectType) {
 
 /**
  *  The last-modified timestamp of the file (from DOS date field).
+ *  May be nil if the archive has no DOS timestamp (e.g. some RAR5 entries).
  *  For higher precision, use lastModifiedTime
  */
-@property (readonly, strong) NSDate *timestamp;
+@property (readonly, strong, nullable) NSDate *timestamp;
 
 /**
  *  High-precision last-modified time (from MtimeLow/MtimeHigh fields, RAR5).
@@ -279,3 +282,5 @@ typedef NS_ENUM(NSUInteger, URKRedirectType) {
 + (instancetype) fileInfo:(struct RARHeaderDataEx * _Nonnull)fileHeader;
 
 @end
+
+NS_ASSUME_NONNULL_END

@@ -1,13 +1,14 @@
 # UnrarKit
 
-[![Build Status](https://travis-ci.com/abbeycode/UnrarKit.svg?branch=master)](https://travis-ci.com/abbeycode/UnrarKit)
 [![Swift Package Manager compatible](https://img.shields.io/badge/SPM-compatible-brightgreen.svg)](https://swift.org/package-manager/)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20iOS%20%7C%20tvOS%20%7C%20watchOS-lightgrey.svg)](#平台支持)
+[![License](https://img.shields.io/badge/license-unRAR-blue.svg)](Libraries/unrar/license.txt)
 
 ## 简介
 
-UnrarKit 是一个面向 macOS 和 iOS 平台的 Objective-C 框架，用于对 RAR 格式压缩文件进行**只读**操作。底层基于 [UnRAR 库](http://www.rarlab.com/rar/unrarsrc-5.8.1.tar.gz) 5.8.1 版本构建。
+UnrarKit 是一个面向 macOS / iOS / tvOS / watchOS 平台的 Objective-C 框架，用于对 RAR 格式压缩文件进行**只读**操作。底层基于官方 [UnRAR 库](http://www.rarlab.com/rar/unrarsrc-5.8.1.tar.gz) 5.8.1 版本构建，同时支持 RAR 4.x 与 RAR 5 两种格式。
 
-项目包含主工程（含单元测试）和一个基础 iOS 示例工程，演示了如何使用该库。打开主工作区文件即可查看所有内容。
+项目包含主工程（含单元测试）和一个基础 iOS 示例工程，演示了如何使用该库。打开 [`UnrarKit.xcworkspace`](UnrarKit.xcworkspace) 即可查看所有内容。
 
 欢迎提交 Pull Request 或[创建 Issue](https://github.com/abbeycode/UnrarKit/issues)。
 
@@ -28,7 +29,7 @@ UnrarKit 是一个面向 macOS 和 iOS 平台的 Objective-C 框架，用于对 
 
 ### Swift Package Manager（推荐）
 
-在 `Package.swift` 中添加依赖：
+在 [`Package.swift`](Package.swift) 中添加依赖：
 
 ```swift
 dependencies: [
@@ -36,7 +37,7 @@ dependencies: [
 ]
 ```
 
-或在 Xcode 中通过 **File → Add Packages…** 搜索仓库地址添加。
+或在 Xcode 中通过 **File → Add Packages…** 输入仓库地址进行集成。
 
 ---
 
@@ -60,6 +61,25 @@ URKArchive *archive = [[URKArchive alloc] initWithURL:fileURL error:&archiveErro
 BOOL isRAR = [URKArchive pathIsARAR:@"/path/to/file.rar"];
 BOOL isRAR = [URKArchive urlIsARAR:fileURL];
 ```
+
+---
+
+## 归档元信息
+
+[`URKArchive`](Sources/UnrarKit/URKArchive.h) 提供了一组只读属性，用于获取归档自身的元信息：
+
+| 属性                    | 类型             | 说明                                       |
+|-------------------------|------------------|--------------------------------------------|
+| `fileURL`               | `NSURL *`        | 归档文件 URL                               |
+| `filename`              | `NSString *`     | 归档文件名                                 |
+| `uncompressedSize`      | `NSNumber *`     | 所有文件解压后的总大小（字节）             |
+| `compressedSize`        | `NSNumber *`     | 归档压缩后的总大小（字节）                 |
+| `hasMultipleVolumes`    | `BOOL`           | 是否为多卷归档的一部分                     |
+| `archiveComment`        | `NSString *`     | 归档注释（仅 RAR 1.5–4.x 支持）            |
+| `isSolidArchive`        | `BOOL`           | 是否为 solid（连续）归档                   |
+| `hasEncryptedHeaders`   | `BOOL`           | 归档头是否加密                             |
+| `hasRecoveryRecord`     | `BOOL`           | 是否包含恢复记录                           |
+| `isLocked`              | `BOOL`           | 归档是否被锁定（禁止修改）                 |
 
 ---
 
@@ -160,8 +180,8 @@ NSArray<NSURL *> *volumes = [archive listVolumeURLs:&error];
 ```objc
 NSError *error = nil;
 URKArchive *archive = [[URKArchive alloc] initWithPath:@"encrypted.rar"
-                                              password:@"myPassword"
-                                                 error:&error];
+                                            password:@"myPassword"
+                                                  error:&error];
 ```
 
 ### 动态设置密码
@@ -202,18 +222,22 @@ BOOL isValid = [archive checkDataIntegrityIgnoringCRCMismatches:^BOOL {
 }];
 ```
 
+> 也可以直接将 `archive.ignoreCRCMismatches = YES` 来跳过 CRC 校验，但请注意这可能存在安全风险。
+
 ---
 
 ## 进度报告
 
-以下方法支持 `NSProgress` 和 `NSProgressReporting`：
+以下方法支持 `NSProgress` 与 `NSProgressReporting`：
 
-- `extractFilesTo:overwrite:error:`
-- `extractData:error:`
-- `extractDataFromFile:error:`
-- `performOnFilesInArchive:error:`
-- `performOnDataInArchive:error:`
-- `extractBufferedDataFromFile:error:action:`
+- [`URKArchive.extractFilesTo:overwrite:error:`](Sources/UnrarKit/URKArchive.h:374)
+- [`URKArchive.extractData:error:`](Sources/UnrarKit/URKArchive.h:406)
+- [`URKArchive.extractDataFromFile:error:`](Sources/UnrarKit/URKArchive.h:437)
+- [`URKArchive.performOnFilesInArchive:error:`](Sources/UnrarKit/URKArchive.h:470)
+- [`URKArchive.performOnDataInArchive:error:`](Sources/UnrarKit/URKArchive.h:488)
+- [`URKArchive.extractBufferedDataFromFile:error:action:`](Sources/UnrarKit/URKArchive.h:504)
+
+`extractFilesTo:overwrite:error:` 还会通过 `NSProgress` 的 `userInfo` 暴露当前正在解压的文件，键名为 `URKProgressInfoKeyFileInfoExtracting`，值为 [`URKFileInfo`](Sources/UnrarKit/URKFileInfo.h:156)。
 
 ### 使用隐式 NSProgress 层级
 
@@ -270,49 +294,90 @@ BOOL success = [archive extractFilesTo:extractURL.path
 
 ## URKFileInfo 属性说明
 
-| 属性                  | 类型                    | 说明                   |
-|-----------------------|-------------------------|------------------------|
-| `archiveName`         | `NSString *`            | 所属归档文件名         |
-| `filename`            | `NSString *`            | 文件名（含路径）       |
-| `timestamp`           | `NSDate *`              | 文件时间戳             |
-| `CRC`                 | `NSUInteger`            | CRC 校验值             |
-| `uncompressedSize`    | `long long`             | 解压后大小（字节）     |
-| `compressedSize`      | `long long`             | 压缩后大小（字节）     |
-| `isDirectory`         | `BOOL`                  | 是否为目录             |
-| `compressionMethod`   | `URKCompressionMethod`  | 压缩方式               |
-| `hostOS`              | `URKHostOS`             | 创建归档的操作系统     |
+[`URKFileInfo`](Sources/UnrarKit/URKFileInfo.h) 是对 RAR 归档文件头的封装，提供以下只读属性：
+
+### 基本信息
+
+| 属性                  | 类型                    | 说明                                  |
+|-----------------------|-------------------------|---------------------------------------|
+| `archiveName`         | `NSString *`            | 所属归档文件名                        |
+| `filename`            | `NSString *`            | 文件名（含归档内路径）                |
+| `uncompressedSize`    | `long long`             | 解压后大小（字节）                    |
+| `compressedSize`      | `long long`             | 压缩后大小（字节）                    |
+| `dictionarySize`      | `NSUInteger`            | 压缩时使用的字典大小（字节）          |
+| `compressionMethod`   | `URKCompressionMethod`  | 压缩方式                              |
+| `hostOS`              | `URKHostOS`             | 创建归档的操作系统                    |
+| `isDirectory`         | `BOOL`                  | 是否为目录                            |
+
+### 时间戳（高精度）
+
+| 属性                  | 类型                    | 说明                                  |
+|-----------------------|-------------------------|---------------------------------------|
+| `timestamp`           | `NSDate *`              | DOS 格式最后修改时间（精度较低）      |
+| `lastModifiedTime`    | `NSDate *`              | 高精度最后修改时间（RAR5）            |
+| `creationTime`        | `NSDate *`              | 高精度创建时间（RAR5）                |
+| `lastAccessTime`      | `NSDate *`              | 高精度最后访问时间（RAR5）            |
+
+### 数据完整性
+
+| 属性                  | 类型                    | 说明                                       |
+|-----------------------|-------------------------|--------------------------------------------|
+| `CRC`                 | `NSUInteger`            | CRC32 校验值                               |
+| `hashType`            | `URKHashType`           | 校验类型：`None` / `CRC32` / `Blake2`      |
+| `fileHash`            | `NSData *`              | 原始哈希字节（最大 32 字节）；CRC32 仅前 4 字节有效，BLAKE2sp 全部有效 |
+
+### 加密 / 多卷 / Solid
+
+| 属性                          | 类型     | 说明                                  |
+|-------------------------------|----------|---------------------------------------|
+| `isEncryptedWithPassword`  | `BOOL`   | 是否使用密码加密                      |
+| `isSplitBefore`               | `BOOL`   | 是否从上一卷续写而来                  |
+| `isSplitAfter`                | `BOOL`   | 是否在下一卷继续                      |
+| `isSolid`                     | `BOOL`   | 是否属于某个 solid 块                 |
+
+### 重定向 / 符号链接
+
+| 属性                    | 类型               | 说明                                                                 |
+|-------------------------|--------------------|----------------------------------------------------------------------|
+| `redirectType`          | `URKRedirectType`  | 重定向类型：`None` / `UnixSymlink` / `WinSymlink` / `WinJunction` / `HardLink` / `FileCopy` |
+| `redirectName`          | `NSString *`       | 重定向的目标路径                                                     |
+| `redirectIsDirectory`   | `BOOL`             | 重定向目标是否为目录                                                 |
 
 ---
 
 ## 错误码说明
 
-| 错误码                          | 说明                         |
-|---------------------------------|------------------------------|
-| `URKErrorCodeEndOfArchive`      | 已读取到归档末尾             |
-| `URKErrorCodeNoMemory`          | 内存不足                     |
-| `URKErrorCodeBadData`           | 数据 CRC 校验失败            |
-| `URKErrorCodeBadArchive`        | 无效的 RAR 归档              |
-| `URKErrorCodeUnknownFormat`     | 不支持的 RAR 格式或版本      |
-| `URKErrorCodeOpen`              | 无法打开文件                 |
-| `URKErrorCodeCreate`            | 无法创建目标目录             |
-| `URKErrorCodeClose`             | 无法关闭归档                 |
-| `URKErrorCodeRead`              | 读取归档失败                 |
-| `URKErrorCodeWrite`             | 写入文件失败                 |
-| `URKErrorCodeArchiveNotFound`   | 归档文件未找到               |
-| `URKErrorCodeUserCancelled`     | 用户取消了操作               |
-| `URKErrorCodeStringConversion`  | 字符串转换为 UTF-8 失败      |
+定义于 [`URKErrorCode`](Sources/UnrarKit/URKArchive.h:25)：
+
+| 错误码                              | 说明                         |
+|-------------------------------------|------------------------------|
+| `URKErrorCodeEndOfArchive`          | 已读取到归档末尾             |
+| `URKErrorCodeNoMemory`              | 内存不足                     |
+| `URKErrorCodeBadData`               | 数据 CRC 校验失败            |
+| `URKErrorCodeBadArchive`            | 无效的 RAR 归档              |
+| `URKErrorCodeUnknownFormat`         | 不支持的 RAR 格式或版本      |
+| `URKErrorCodeOpen`                  | 无法打开文件                 |
+| `URKErrorCodeCreate`                | 无法创建目标目录             |
+| `URKErrorCodeClose`                 | 无法关闭归档                 |
+| `URKErrorCodeRead`                  | 读取归档失败                 |
+| `URKErrorCodeWrite`                 | 写入文件失败                 |
+| `URKErrorCodeSmall`                 | 注释长度超过缓冲区大小       |
+| `URKErrorCodeUnknown`               | 未明确分类的错误             |
+| `URKErrorCodeMissingPassword`    | 加密归档未提供密码           |
+| `URKErrorCodeBadPassword`        | 提供的密码错误               |
+| `URKErrorCodeArchiveNotFound`       | 归档文件未找到               |
+| `URKErrorCodeUserCancelled`         | 用户取消了操作               |
+| `URKErrorCodeStringConversion`      | 字符串转换为 UTF-8 失败      |
 
 ---
 
 ## 日志
 
-对于 2016 年及以后的系统（macOS 10.12、iOS 10、tvOS 10、watchOS 3），UnrarKit 使用 Apple 的[统一日志框架](https://developer.apple.com/documentation/os/logging)进行日志记录和活动追踪。可通过 Info 或 Debug 级别查看详细运行信息。
-
-旧版系统回退使用 `NSLog`，所有消息以相同级别输出。
+UnrarKit 使用 Apple 的[统一日志框架](https://developer.apple.com/documentation/os/logging)进行日志记录和活动追踪，可在 Console.app 中按 subsystem `com.abbey-code.UnrarKit` 过滤查看。
 
 ### 调整日志级别
 
-如需降低 UnrarKit 的日志详细程度，可运行：
+如需降低 UnrarKit 的日志详细程度，可在终端运行：
 
 ```bash
 sudo log config --mode "level:default" --subsystem com.abbey-code.UnrarKit
@@ -321,8 +386,6 @@ sudo log config --mode "level:default" --subsystem com.abbey-code.UnrarKit
 可用级别（详细程度递增）：`default` → `info` → `debug`，默认为 `debug`。
 
 ### 日志规范
-
-#### 各级别用途
 
 | 级别      | 用途                                                                 |
 |-----------|----------------------------------------------------------------------|

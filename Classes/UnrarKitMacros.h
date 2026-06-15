@@ -91,6 +91,8 @@ os_activity_t activity = os_activity_create(name, OS_ACTIVITY_CURRENT, OS_ACTIVI
 os_activity_scope(activity);
 
 
+#pragma clang diagnostic pop
+
 #else // Fall back to regular NSLog
 
 // No-op, as nothing needs to be initialized
